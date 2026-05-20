@@ -5,7 +5,7 @@ description: Use this skill when building or modifying the AudioGrab Next.js API
 
 ## Route Location & Runtime
 
-File: `web/src/app/api/extract/route.ts`
+File: `app/api/extract/route.ts`
 
 ```ts
 // Top of file — REQUIRED
@@ -21,25 +21,26 @@ export const maxDuration = 300;    // seconds; set to your host's max
 
 Deploy to **Railway or Render**, not Vercel serverless. Vercel's serverless functions have a 250 MB bundle size cap and short execution limits that prevent bundling `yt-dlp`/`ffmpeg` binaries.
 
-## Request Parsing
+## Multipart Parsing
 
-Support both JSON URL requests and multipart uploads:
+Use the built-in `request.formData()` — Next.js App Router handles this natively:
 
 ```ts
 export async function POST(request: Request) {
-  const contentType = request.headers.get('content-type') ?? '';
+  const form = await request.formData();
+  const url      = form.get('url')      as string | null;
+  const file     = form.get('file')     as File   | null;
+  const bitrate  = form.get('bitrate')  as string ?? '192';
+  const trimStart = form.get('trimStart') ? Number(form.get('trimStart')) : undefined;
+  const trimEnd   = form.get('trimEnd')   ? Number(form.get('trimEnd'))   : undefined;
 
-  if (contentType.includes('application/json')) {
-    const body = await request.json();
-    // body.url -> URL extraction path
-  } else if (contentType.includes('multipart/form-data')) {
-    const form = await request.formData();
-    const url = form.get('url') as string | null;
-    const file = form.get('file') as File | null;
-    // multipart upload path
-  } else {
-    return jsonError('Unsupported content type.', 'INVALID_REQUEST', 400);
+  if (!url && !file) {
+    return errorResponse('MISSING_INPUT', 'Provide a URL or upload a file.', 400);
   }
+  if (url && file) {
+    return errorResponse('AMBIGUOUS_INPUT', 'Provide a URL or a file, not both.', 400);
+  }
+  // ...
 }
 ```
 
@@ -59,7 +60,7 @@ await fs.mkdir(tmpDir, { recursive: true });
 try {
   // ... write input file if needed, run extraction, read output ...
   const mp3Buffer = await fs.readFile(outputPath);
-    return streamMp3(mp3Buffer, safeFilename);
+  return streamMp3(mp3Buffer, safeFilename);
 } finally {
   await fs.rm(tmpDir, { recursive: true, force: true });
 }
@@ -105,16 +106,16 @@ function streamMp3(buffer: Buffer, filename: string): Response {
 ## Error Response Helper
 
 ```ts
-function jsonError(error: string, code: string, status: number): Response {
-  return Response.json({ error, code }, { status });
+function errorResponse(code: string, message: string, status: number): Response {
+  return Response.json({ error: { code, message } }, { status });
 }
 ```
 
 ## Timeouts & Size Enforcement
 
-- Reject files > 200 MB before processing.
-- Validate request content type before parsing the body.
-- Return structured JSON errors for every failure path.
+- Reject files > 200 MB before processing (both client-side and server-side).
+- Wrap `yt-dlp` / `ffmpeg` invocations with an `AbortController` timeout (e.g., 240 s) and kill the child process if exceeded.
+- Return `504` with `TIMEOUT` code if processing exceeds limit.
 
 ## Do / Don't
 
