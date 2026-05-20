@@ -5,111 +5,93 @@ description: Use this skill when building or modifying the AudioGrab Next.js fro
 
 ## Stack
 
-- **Next.js App Router** (TypeScript). All UI lives under `app/`.
-- **Tailwind CSS** for all styling — no CSS modules or styled-components.
-- Functional components only. Use `useState`/`useReducer` for local state; no global store.
+- **Next.js App Router** (TypeScript). UI lives under `web/src/app/` (pages) and `web/src/components/`.
+- **Styling = plain CSS + CSS variables** in `web/src/app/globals.css`. **Not** Tailwind utilities.
+  The "AlesSystems" aesthetic relies on conic/iridescent gradients and a `mask-composite`
+  gradient border that Tailwind utilities can't express cleanly. Tailwind is not used here.
+- **Fonts** via `next/font/google` in `app/layout.tsx`, exposed as CSS variables:
+  Space Grotesk (`--font-space-grotesk` → `--display`), JetBrains Mono
+  (`--font-jetbrains-mono` → `--mono`), Inter (`--font-inter` → `--body`).
+- Functional components only. Local state with `useState`; no global store.
 
-## Layout & Design
+## Aesthetic — "AlesSystems"
 
-Minimal, modern aesthetic. Dark background (`bg-gray-950`), single centered card (`max-w-xl`), generous vertical padding.
+Dark navy (never pure black), terminal-inspired, iridescent. All design tokens are defined
+once at `:root` in `globals.css` — **never invent new colors/gradients**, reuse the vars:
 
-```
-<main className="min-h-screen bg-gray-950 flex items-center justify-center p-6">
-  <div className="w-full max-w-xl bg-gray-900 rounded-2xl p-8 shadow-xl">
-    <h1 className="text-3xl font-bold text-white mb-2">AudioGrab</h1>
-    <p className="text-gray-400 mb-6">Paste a video URL or upload a file — get an MP3.</p>
-    {/* tabs, input, controls */}
-  </div>
-</main>
-```
+- Surfaces `--bg #0A0E27`, `--surface`, `--line`. Text `--text`/`--muted`/`--dim`.
+- Accents `--blue --violet --teal --magenta(#EC4899, THE accent) --green --amber --red`.
+- Gradients `--grad`, `--grad-soft`, `--grad-iri` (the iridescent one).
+- `--mono` for ALL labels/nav/buttons/status/codes; `--display` for the wordmark; `--body` for the pitch line.
+- Keep all `@keyframes` (`iri`, `blink`, `pulse`, `reveal`, `eq`, `barslide`, `shake`, etc.) verbatim.
+  `prefers-reduced-motion` disables them; a `max-width:640px` block makes it responsive.
 
-## Tabbed Input
+## Component map (`web/src/`)
 
-Two tabs: **Paste URL** and **Upload File**. Active tab underlined with `border-b-2 border-indigo-500`.
+| File | Role |
+|---|---|
+| `app/layout.tsx` | Loads the 3 Google fonts, applies their CSS-var classes to `<html>`, sets metadata. |
+| `app/page.tsx` | Assembles `Overlays` + `CustomCursor` + `Nav` + `.shell`(`Hero` + `Extractor`) + `Footer`. |
+| `app/globals.css` | All design CSS — `:root` tokens, every component class, keyframes. |
+| `components/Nav.tsx` | Glass fixed nav: `~/audiograb ▍`, `● online` chip, `~/github`. |
+| `components/Hero.tsx` | `Audio` + iridescent `Grab` wordmark, 20-bar equalizer, Inter pitch. |
+| `components/Footer.tsx` | One mono line. |
+| `components/Overlays.tsx` | Grain SVG + scanlines. |
+| `components/CustomCursor.tsx` | `'use client'` — magenta dot + lagging ring; off on touch/mobile/reduced-motion. |
+| `components/Extractor.tsx` | `'use client'` — the terminal card + 4-state machine (below). |
+| `lib/errors.ts` | `ERROR_MESSAGES` (all 11 codes) + helpers `fmtBytes`/`isValidUrl`/`slugFromUrl`/`stripExt`/`TS`. |
+| `lib/extract.ts` | `extract()` — real `POST /api/extract` with mock fallback. |
 
-- **Paste URL tab:** single `<input type="url">` with placeholder `https://youtube.com/watch?v=…`
-- **Upload File tab:** drag-and-drop dropzone. Accept `video/*`. Show file name once selected. Enforce 200 MB client-side before submitting:
+## The Extractor (terminal card)
 
-```ts
-if (file.size > 200 * 1024 * 1024) {
-  dispatch({ type: 'ERROR', message: 'File exceeds 200 MB limit.' });
-  return;
-}
-```
+Styled as a terminal window: macOS lights, mono title `$ audiograb — extract`, a status pill
+(`ready`/`running`/`done`/`error`), and the animated iridescent border (`.card::before`,
+`mask-composite` trick; speeds up via `.card.busy` during loading).
 
-Drag-over state: highlight dropzone border (`border-indigo-400 bg-gray-800`).
-
-## Controls
-
-- **Bitrate selector** — `<select>` with options 128, 192, 320 kbps. Default `192`.
-- **Trim (optional)** — two `<input type="number">` fields for `trimStart` and `trimEnd` (seconds). Show only when the user expands an "Advanced" disclosure.
-- **"Extract Audio" button** — full-width, `bg-indigo-600 hover:bg-indigo-500`, disabled during loading.
+- **Tabbed input** — mono tabs `paste url` | `upload file`; active tab gets a magenta underline
+  + blinking caret (`role="tab"`, `aria-selected`).
+  - URL tab: `<input type="url">` with a leading magenta `>` prompt, placeholder `https://vimeo.com/…`.
+  - File tab: drag-drop dropzone (`video/*`), lights iridescent on drag-over, shows a filename chip,
+    enforces the 200 MB cap client-side before submit.
+- **Bitrate** — mono segmented control `128`/`192`/`320` (default `192`), `role="radiogroup"`.
+- **Advanced · trim** — collapsible disclosure with two `<input type="number">` (start/end seconds).
+- **CTA** — full-width mono `$ ./extract-audio`, bordered/tinted (not a solid fill), disabled until valid input.
 
 ## State Machine
 
-Use a `useReducer` with four states:
+`Extractor` holds `phase: 'idle' | 'loading' | 'success' | 'error'` (plus `errorCode`, `result`)
+in `useState`. Panels cross-fade (`.fadeswap`):
 
-| State | Description |
-|-------|-------------|
-| `idle` | Initial; button enabled |
-| `loading` | Request in flight; show spinner; button disabled |
-| `success` | Show download link (blob URL); allow retry |
-| `error` | Show `error.message` in red; allow retry |
+| Phase | Shows |
+|-------|-------|
+| `idle` | tabs + input + bitrate + trim + CTA |
+| `loading` | timestamped faux log stream (`LoadingPanel`, visual only) + cancel link |
+| `success` | `SuccessPanel` — filename chip, size, green **Download MP3**, `↺ extract another` |
+| `error` | `ErrorPanel` — red `✗ CODE` + friendly message from `ERROR_MESSAGES` + `↺ try again` |
 
-```ts
-type State =
-  | { status: 'idle' }
-  | { status: 'loading' }
-  | { status: 'success'; url: string; filename: string }
-  | { status: 'error'; message: string };
-```
+Map every API error `code` to a message (`lib/errors.ts`). `BOT_BLOCKED` nudges toward Vimeo/upload.
 
-On success, create an object URL from the response blob and render:
-```tsx
-<a href={state.url} download={state.filename}
-   className="block w-full text-center bg-green-600 hover:bg-green-500 text-white py-3 rounded-xl">
-  Download MP3
-</a>
-```
+## Calling POST /api/extract (`lib/extract.ts`)
 
-Revoke the blob URL on unmount or when a new extraction starts.
-
-## Calling POST /api/extract
-
-Always use `multipart/form-data` (do NOT set `Content-Type` manually — let the browser set the boundary).
+`multipart/form-data` (never set `Content-Type` — let the browser set the boundary):
 
 ```ts
-async function extract(tab: 'url' | 'file') {
-  dispatch({ type: 'LOADING' });
-  const fd = new FormData();
-
-  if (tab === 'url') {
-    fd.append('url', urlInput);
-  } else {
-    fd.append('file', selectedFile);
-  }
-  fd.append('bitrate', bitrate);          // '128' | '192' | '320'
-  if (trimStart) fd.append('trimStart', String(trimStart));
-  if (trimEnd)   fd.append('trimEnd',   String(trimEnd));
-
-  const res = await fetch('/api/extract', { method: 'POST', body: fd });
-  if (!res.ok) {
-    const { error } = await res.json();
-    dispatch({ type: 'ERROR', message: error.message });
-    return;
-  }
-
-  const blob = await res.blob();
-  const filename = res.headers.get('Content-Disposition')
-    ?.match(/filename="(.+)"/)?.[1] ?? 'audio.mp3';
-  const blobUrl = URL.createObjectURL(blob);
-  dispatch({ type: 'SUCCESS', url: blobUrl, filename });
-}
+const fd = new FormData();
+tab === 'url' ? fd.append('url', url) : fd.append('file', file);
+fd.append('bitrate', bitrate);              // '128' | '192' | '320'
+if (trimStart) fd.append('trimStart', trimStart);
+if (trimEnd)   fd.append('trimEnd',   trimEnd);
+const res = await fetch('/api/extract', { method: 'POST', body: fd, signal });
+// ok → blob + filename from Content-Disposition; non-ok → { error: { code } }
 ```
+
+**Mock fallback:** if the fetch throws (no backend) or returns 404 with a non-JSON body, `extract()`
+falls back to a client-side mock (4 s timer, URL-keyword forced errors, fake MP3 blob) so the page
+works standalone until the backend route exists. A real backend's `{error:{code}}` envelope is always honored.
 
 ## Do / Don't
 
-- **Do** keep all extraction logic server-side; the frontend only submits and downloads.
-- **Do** show user-friendly messages for every error code (see API skill).
-- **Don't** poll or use WebSockets — single synchronous request is sufficient.
-- **Don't** store the blob URL in any persistent state; always revoke it on cleanup.
+- **Do** keep all real extraction server-side; the frontend only submits + downloads.
+- **Do** revoke object URLs on reset/unmount.
+- **Do** reuse the `:root` tokens and existing `@keyframes` — verify the iridescent border still cycles after any change.
+- **Don't** use Tailwind utilities, add a light mode, poll, or use WebSockets — one synchronous request is enough.
