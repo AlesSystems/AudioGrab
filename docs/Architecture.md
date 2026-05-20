@@ -64,14 +64,24 @@ sequenceDiagram
 
 ### Frontend
 
+The UI implements the **"AlesSystems"** design system — a dark navy, terminal-inspired,
+iridescent aesthetic. Styling is **plain CSS + CSS variables** in `app/globals.css` (not
+Tailwind utilities — the conic/iridescent gradients and the `mask-composite` gradient border
+can't be expressed cleanly as utilities). Three Google fonts (Space Grotesk, JetBrains Mono,
+Inter) load via `next/font/google` in `app/layout.tsx` and are exposed as CSS variables
+(`--display` / `--mono` / `--body`). Dark theme only.
+
 | Component | Responsibility |
 |---|---|
-| `app/page.tsx` | Root page — renders the extraction card |
-| `components/UrlInput.tsx` | Controlled text input for video URLs with basic validation |
-| `components/FileDropzone.tsx` | Drag-and-drop zone using the File API; enforces 200 MB cap client-side |
-| `components/BitrateSelector.tsx` | 128 / 192 / 320 kbps radio group |
-| `components/ExtractButton.tsx` | Triggers the API call; manages loading state |
-| `components/StatusBanner.tsx` | Displays loading spinner, success download link, or error message |
+| `app/page.tsx` | Root page — assembles overlays, nav, hero, extractor, footer |
+| `app/layout.tsx` | Loads the 3 Google fonts as CSS vars; sets page metadata |
+| `app/globals.css` | All design CSS — `:root` tokens, component classes, `@keyframes` |
+| `components/Extractor.tsx` | The terminal card: tabbed URL/file input, dropzone (200 MB client cap), bitrate, trim, CTA, and the `idle → loading → success → error` state machine |
+| `components/Hero.tsx` | Iridescent `AudioGrab` wordmark + animated equalizer + pitch line |
+| `components/Nav.tsx` / `components/Footer.tsx` | Glass nav and mono footer line |
+| `components/Overlays.tsx` / `components/CustomCursor.tsx` | Grain/scanline overlays; lagging custom cursor (off on touch/mobile/reduced-motion) |
+| `lib/extract.ts` | Builds the `multipart/form-data` request to `POST /api/extract`; mock fallback when no backend |
+| `lib/errors.ts` | `ERROR_MESSAGES` (all 11 canonical codes) + formatting/validation helpers |
 
 ### Backend
 

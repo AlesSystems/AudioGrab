@@ -30,7 +30,7 @@ A web app where a user pastes a video URL (YouTube, Vimeo, direct link) **or** u
 
 ## Stack
 
-- **Frontend:** Next.js (App Router, TypeScript) + Tailwind CSS.
+- **Frontend:** Next.js (App Router, TypeScript). Styling is **plain CSS + CSS variables** in `globals.css` (the "AlesSystems" dark/iridescent design system — *not* Tailwind utilities, which can't express the iridescent/`mask-composite` gradients). Three Google fonts (Space Grotesk, JetBrains Mono, Inter) via `next/font/google`.
 - **Backend:** Next.js API route — `POST /api/extract`.
 - **Core tools:** `yt-dlp` (URL downloads, ~1000 sites) + `ffmpeg` (audio extraction/conversion), invoked as child processes via argv arrays (never a shell).
 - **Storage:** Ephemeral only — temp files created per request, cleaned up in a `finally` block. **No database.**

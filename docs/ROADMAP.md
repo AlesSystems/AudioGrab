@@ -18,20 +18,20 @@ A focused sprint plan for taking AudioGrab from zero to a deployed, demo-ready w
 
 ## Phase 2 — Core Build in Parallel (0:15–1:00)
 
-### Frontend (Person A)
+### Frontend (Person A) — ✅ DONE
 
-Build the single landing page:
+The single landing page is built (the "AlesSystems" dark/iridescent terminal design):
 
-- **Header:** App title + one-line pitch ("Paste a URL or drop a video — get an MP3.")
-- **Tabs:** "Paste URL" | "Upload File" — toggling between two input modes
-- **URL tab:** Text input for YouTube, Vimeo, or any direct video link
-- **Upload tab:** Drag-and-drop zone (accept `video/*`) with a file-picker fallback
-- **Single CTA:** "Extract Audio" button, disabled until input is present
-- **States:**
-  - `idle` — initial prompt
-  - `loading` — spinner + "Extracting audio…" message
-  - `success` — download link appears immediately
-  - `error` — inline error message below the form
+- ✅ **Hero:** iridescent `AudioGrab` wordmark + animated equalizer + one-line pitch
+- ✅ **Tabs:** `paste url` | `upload file` toggling between two input modes
+- ✅ **URL tab:** terminal-style `<input type="url">` for YouTube, Vimeo, or direct links
+- ✅ **Upload tab:** drag-and-drop dropzone (`video/*`) with browse fallback + 200 MB client cap
+- ✅ **Bitrate** segmented control (128/192/320) and collapsible **trim** advanced disclosure
+- ✅ **CTA:** `$ ./extract-audio`, disabled until input is valid
+- ✅ **States** (`idle → loading → success → error`): cross-faded panels, faux log stream on
+  loading, green Download MP3 on success, mapped error codes on error
+- ✅ Wired to `POST /api/extract` (`lib/extract.ts`) with a mock fallback so the page works
+  standalone until the backend route lands
 
 ### Backend (Person B)
 
