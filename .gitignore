@@ -1,24 +1,50 @@
-# Nestjs specific
-/dist
+# dependencies
 /node_modules
-/build
-/tmp
+/.pnp
+.pnp.js
+.yarn/install-state.gz
 
-# Logs
-logs
-*.log
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+/build
+next-env.d.ts
+
+# production
+/dist
+
+# misc
+.DS_Store
+*.pem
+
+# debug
 npm-debug.log*
-pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
 lerna-debug.log*
 
-# dotenv environment variable files
+# logs
+logs
+*.log
+
+# local env files
 .env
+.env*.local
 .env.development
 .env.test
 .env.production
 
-# temp directory
-.temp
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+
+# temp / working files (ephemeral audio extraction)
+/tmp
 .tmp
+.temp
