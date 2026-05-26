@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { createReadStream } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -18,8 +19,9 @@ export type ExtractRequest =
     };
 
 export type ExtractResult = {
-  buffer: Buffer;
+  outputPath: string;
   fileName: string;
+  cleanup: () => Promise<void>;
 };
 
 export class ExtractApiError extends Error {
@@ -43,8 +45,9 @@ export async function extractAudio(input: ExtractRequest): Promise<ExtractResult
     }
 
     return await extractFromFile(tempDir, input.fileBuffer, input.fileName, input.bitrate);
-  } finally {
-    await fs.rm(tempDir, { recursive: true, force: true });
+  } catch (error) {
+    await cleanupTempDir(tempDir);
+    throw error;
   }
 }
 
@@ -75,11 +78,11 @@ async function extractFromUrl(
   );
 
   const outputPath = await findSingleMp3(tempDir);
-  const buffer = await fs.readFile(outputPath);
 
   return {
-    buffer,
+    outputPath,
     fileName: sanitizeFileName(requestedTitle || path.basename(outputPath, path.extname(outputPath))),
+    cleanup: async () => cleanupTempDir(tempDir),
   };
 }
 
@@ -100,12 +103,20 @@ async function extractFromFile(
     "File conversion failed.",
   );
 
-  const buffer = await fs.readFile(outputPath);
-
   return {
-    buffer,
+    outputPath,
     fileName: sanitizeFileName(path.basename(sourceName, path.extname(sourceName))),
+    cleanup: async () => cleanupTempDir(tempDir),
   };
+}
+
+export async function getFileSize(filePath: string): Promise<number> {
+  const stats = await fs.stat(filePath);
+  return stats.size;
+}
+
+export function openMp3Stream(filePath: string) {
+  return createReadStream(filePath);
 }
 
 async function getVideoTitle(url: string): Promise<string | undefined> {
@@ -150,6 +161,10 @@ function assertHttpUrl(url: string): void {
 
 function sanitizeFileName(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "audio";
+}
+
+async function cleanupTempDir(tempDir: string): Promise<void> {
+  await fs.rm(tempDir, { recursive: true, force: true });
 }
 
 async function runCommand(
