@@ -21,6 +21,7 @@ export type ExtractRequest =
 export type ExtractResult = {
   outputPath: string;
   fileName: string;
+  // The route owns cleanup after the MP3 stream closes.
   cleanup: () => Promise<void>;
 };
 

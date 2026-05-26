@@ -14,6 +14,7 @@ export async function POST(request: Request): Promise<Response> {
 
     if (contentLength) {
       const parsedLength = Number(contentLength);
+      // Multipart overhead counts toward Content-Length, so this is only an early coarse reject.
       if (Number.isFinite(parsedLength) && parsedLength > MAX_FILE_SIZE) {
         return jsonError("Uploaded file exceeds the 200 MB limit.", "FILE_TOO_LARGE", 413);
       }
@@ -100,16 +101,16 @@ async function mp3Response(
   fileName: string,
   cleanup: () => Promise<void>,
 ): Promise<Response> {
+  const contentLength = await getFileSize(outputPath);
   const nodeStream = openMp3Stream(outputPath);
   const webStream = Readable.toWeb(nodeStream) as ReadableStream;
-  const contentLength = await getFileSize(outputPath);
   const finalize = once(cleanup);
 
   nodeStream.on("close", () => {
-    void finalize();
+    finalize().catch(logCleanupError);
   });
   nodeStream.on("error", () => {
-    void finalize();
+    finalize().catch(logCleanupError);
   });
 
   return new Response(webStream, {
@@ -137,4 +138,8 @@ function once(callback: () => Promise<void>): () => Promise<void> {
     didRun = true;
     await callback();
   };
+}
+
+function logCleanupError(error: unknown): void {
+  console.error("Failed to clean up extraction temp files.", error);
 }

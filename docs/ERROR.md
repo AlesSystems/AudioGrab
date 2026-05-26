@@ -14,7 +14,7 @@ This document maps every known failure mode to its root cause, the user-facing m
 | 2 | **Ambiguous input** | Both `url` and `file` were sent | `AMBIGUOUS_INPUT` (400) | "Provide either a URL or a file, not both." | Validated at the route boundary |
 | 3 | **Invalid / unparseable URL** | Input fails `URL` constructor or uses a non-HTTP scheme | `INVALID_URL` (400) | "That doesn't look like a valid URL. Please enter an `http://` or `https://` link." | Rejected server-side before spawning any process |
 | 4 | **Unsupported request type** | Request body is not JSON or multipart form data | `INVALID_REQUEST` (400) | "Use application/json or multipart/form-data." | Validated from the request `Content-Type` header |
-| 5 | **File too large (> 200 MB)** | Uploaded file exceeds the enforced 200 MB cap | `FILE_TOO_LARGE` (413) | "File is too large. The maximum size is 200 MB." | Checked against `file.size` before writing to disk |
+| 5 | **File too large (> 200 MB)** | Request `Content-Length` already exceeds the cap, or uploaded file exceeds the enforced 200 MB cap after multipart parsing | `FILE_TOO_LARGE` (413) | "File is too large. The maximum size is 200 MB." | Coarsely pre-filtered from `Content-Length`, then confirmed against `file.size` before writing to disk |
 | 6 | **Unsupported URL (site not recognized by yt-dlp)** | `yt-dlp` exits with *"Unsupported URL"* / "no video formats" in stderr | `UNSUPPORTED_URL` (422) | "This URL isn't supported. Try Vimeo, a direct video link (.mp4), or upload the file instead." | Detect the pattern in `yt-dlp` stderr |
 | 7 | **YouTube bot-block / IP ban (cloud host)** | Cloud host IP flagged; `yt-dlp` returns HTTP 429 or a sign-in wall | `BOT_BLOCKED` (422) | "YouTube blocked this server from downloading the video. Try uploading the file directly, or paste a Vimeo or direct `.mp4` link." | Detect `429`, `sign in`, or `bot detected` errors in stderr |
 | 8 | **Unsupported file format / decode failure** | `ffmpeg` cannot identify a video/audio stream, or a conversion process exits non-zero | `CONVERSION_FAILED` (422) | "Audio extraction failed. The file may be corrupted, in an unsupported format, or the video may be unavailable." | Fallback classification for non-zero yt-dlp/ffmpeg exits |
@@ -59,5 +59,5 @@ The frontend reads `error` to display to the user and may switch on `code` for c
 
 - **Fail fast on the route boundary** — validate presence of `url`/`file`, file size, and content type before doing any disk or subprocess work.
 - **Classify stderr before giving up** — scan `yt-dlp` and `ffmpeg` stderr for known patterns like bot blocks and unsupported URLs before falling through to the generic conversion error.
-- **Always clean up** — temp files are removed in a `finally` block regardless of success or failure.
+- **Always clean up** — extraction helpers keep temp files alive for streaming, and the route removes them after the MP3 stream closes.
 - **Return one stable error shape** — every failure path returns `{ error, code }` JSON so the frontend can handle it consistently.

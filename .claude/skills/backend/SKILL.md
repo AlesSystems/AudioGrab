@@ -46,27 +46,36 @@ export async function POST(request: Request) {
 
 ## Temp File Lifecycle
 
-Always use an **isolated temp directory per request** with a random name. Clean up in a `finally` block — guaranteed even on error or early return.
+Always use an **isolated temp directory per request** with a random name. Clean up extraction temps on failure inside the helper, then defer success cleanup to the route once the MP3 response stream closes.
 
 ```ts
 import os from 'os';
 import path from 'path';
 import fs from 'fs/promises';
+import { Readable } from 'node:stream';
 import { randomUUID } from 'crypto';
 
 const tmpDir = path.join(os.tmpdir(), `audiograb-${randomUUID()}`);
 await fs.mkdir(tmpDir, { recursive: true });
 
 try {
-  // ... write input file if needed, run extraction, read output ...
-  const mp3Buffer = await fs.readFile(outputPath);
-  return streamMp3(mp3Buffer, safeFilename);
-} finally {
+  // ... run extraction and return { outputPath, cleanup }
+  const contentLength = await fs.stat(outputPath);
+  const nodeStream = createReadStream(outputPath);
+  const webStream = Readable.toWeb(nodeStream);
+  nodeStream.on('close', () => {
+    cleanup().catch((error) => console.error('Temp cleanup failed', error));
+  });
+  return new Response(webStream, {
+    headers: { 'Content-Length': String(contentLength.size) },
+  });
+} catch (error) {
   await fs.rm(tmpDir, { recursive: true, force: true });
+  throw error;
 }
 ```
 
-Never leave temp files on disk — the host's ephemeral filesystem fills up quickly.
+Never leave temp files on disk — the host's ephemeral filesystem fills up quickly. If the helper returns a `cleanup` callback, the route must always attach it to stream completion.
 
 ## File Upload Handling
 
@@ -74,6 +83,10 @@ Convert the `File` object from `formData()` to a buffer and write to the temp di
 
 ```ts
 if (file) {
+  const contentLength = request.headers.get('content-length');
+  if (contentLength && Number(contentLength) > 200 * 1024 * 1024) {
+    return errorResponse('FILE_TOO_LARGE', 'File exceeds 200 MB.', 413);
+  }
   if (file.size > 200 * 1024 * 1024) {
     return errorResponse('FILE_TOO_LARGE', 'File exceeds 200 MB.', 413);
   }
@@ -86,17 +99,28 @@ if (file) {
 
 ## Streaming the MP3 Response
 
-Return the MP3 as a binary response with correct headers. Read the output file into a buffer and return it (buffered is fine for files up to 200 MB):
+Return the MP3 as a streamed binary response with correct headers. Stat the file before opening the stream so a stat failure cannot leak the temp directory:
 
 ```ts
-function streamMp3(buffer: Buffer, filename: string): Response {
+async function streamMp3(outputPath: string, filename: string, cleanup: () => Promise<void>): Promise<Response> {
+  const stats = await fs.stat(outputPath);
+  const nodeStream = createReadStream(outputPath);
+  const webStream = Readable.toWeb(nodeStream);
+
+  nodeStream.on('close', () => {
+    cleanup().catch((error) => console.error('Temp cleanup failed', error));
+  });
+  nodeStream.on('error', () => {
+    cleanup().catch((error) => console.error('Temp cleanup failed', error));
+  });
+
   const safe = filename.replace(/[^\w.\-]/g, '_');
-  return new Response(buffer, {
+  return new Response(webStream, {
     status: 200,
     headers: {
       'Content-Type': 'audio/mpeg',
       'Content-Disposition': `attachment; filename="${safe}.mp3"`,
-      'Content-Length': String(buffer.length),
+      'Content-Length': String(stats.size),
       'Cache-Control': 'no-store',
     },
   });
